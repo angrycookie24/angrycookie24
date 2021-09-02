@@ -1,0 +1,162 @@
+import pandas as pd
+import random
+import datetime
+
+class Total_Resources:
+    def __init__(self):
+        self.s = 140 #количество подразделений
+        self.o = 3802053000 #общий окладный фонд
+        self.pr = 70 #количество проектов
+        #self.today = datetime.date.today()
+        self.today = datetime.date(2021, 4, 1)
+    
+    def total_limits(self): 
+        c = {'Дата': self.today,#.strftime("%d.%m.%Y"),
+            'ВДЛ': ['ВДЛ ' + str(x) for x in random.choices(range(1, 11),
+                                                    weights = [22,13,5,17,30,8,19,11,25,7],
+                                                                k=self.s)]
+             }
+        
+        data = pd.DataFrame(c, index = [int(x) for x in range(1, self.s+1)])        
+        data.index.name = 'ID ССП'
+        
+              
+        data['Источник'] = 'Босс-Кадровик'
+        data['Текущая / Проектная деятельность'] = 'Текущая деятельность'
+
+
+        # ССП
+        data['ССП'] = ''        
+        for vdl in data['ВДЛ'].unique():
+            vdl_number = data['ВДЛ']==vdl       
+            data.loc[vdl_number, 'ССП'] = ['ССП ' 
+                                            + str(vdl[4:]) + '.' 
+                                            + str(x) for x in range(len(data[vdl_number].index))]
+        # ресурсы напрямую под ВДЛ (т.н. прямой ресурс)
+        direct_resources = []
+        for d in data['ССП'].unique():
+            if d[-2:]=='.0':
+                direct_resources.append(d)
+        data.loc[data['ССП'].isin(direct_resources), 'ССП'] = ''
+      
+        
+        # ш.е.        
+        data['ш.е.'] = ''
+        data.loc[data['ССП']=='', 'ш.е.'] = [int(x) for x in random.choices(range(1, 8),
+                                                    weights = [22,13,5,17,30,8,19],
+                                                    k=len(data[data['ССП']==''].index))]
+        data.loc[data['ССП']!='', 'ш.е.'] = [int(x) for x in random.choices(range(30, 290),
+                                                    k=len(data[data['ССП']!=''].index))]
+        
+        # Окладный фонд
+        data['Коэффициент'] = '' #коэффициент отклонения от среднего
+        data.loc[data['ССП']=='', 'Коэффициент'] = [int(x) for x in random.choices(range(200, 300),
+                                                    k=len(data[data['ССП']==''].index))]
+        data.loc[data['ССП']!='', 'Коэффициент'] = [int(x) for x in random.choices(range(50, 170, 1),
+                                                    k=len(data[data['ССП']!=''].index))]
+        data['Коэффициент'] = data['Коэффициент']/100
+        
+        data['Окладный фонд'] = (self.o/(data['ш.е.']*data['Коэффициент']).sum())*data['ш.е.']*data['Коэффициент']
+        data['Окладный фонд'] = data['Окладный фонд'].apply(lambda x: round(x))
+        
+        data['Средний оклад'] = data['Окладный фонд']/data['ш.е.']
+         
+        
+        # Участие в проектной деятельности
+        data.loc[data['ССП']=='', 'Участие в проектах'] = 'нет'
+        data.loc[data['ССП']!='', 'Участие в проектах'] = [str(x) for x in random.choices(['да', 'нет'],
+                                                                            weights = [30, 70],
+                                                                            k=len(data[data['ССП']!=''].index))]
+        #print(data.columns)
+        return data
+    
+    def project_resources(self):
+        ssp_draft = self.total_limits()
+        ssp = ssp_draft[ssp_draft['Участие в проектах']=='да'][['ССП','ш.е.']].copy()        
+        
+        c = {'Дата': self.today,
+            'Программа': ['Программа ' + str(x) for x in random.choices(range(1, 9),
+                                                    weights = [22,13,5,17,28,10,8,14],
+                                                                k=self.pr)]
+             }
+        
+        project = pd.DataFrame(c, index = [int(x) for x in range(1, self.pr+1)])        
+        project.index.name = 'ID Проекта'
+        
+        project['Источник'] = 'Jira'
+        project['Текущая / Проектная деятельность'] = 'Проектная деятельность'
+        
+        # Проект
+        project['Проект'] = ''        
+        for programm in project['Программа'].unique():
+            programm_number = project['Программа']==programm       
+            project.loc[programm_number, 'Проект'] = ['Проект ' 
+                                            + str(programm[10:]) + '.' 
+                                            + str(x) for x in range(1,len(project[programm_number].index)+1)]
+        
+        #дата начала проекта
+        project['Дата начала проекта'] = project['Дата'] - [pd.Timedelta(days=x) for x in random.choices(range(53, 270),
+                                                                 k=len(project.index))]
+        #дата окончания проекта
+        project['Дата окончания проекта'] = project['Дата'] + [pd.Timedelta(days=x) for x in random.choices(range(95, 323),
+                                                                 k=len(project.index))]
+        
+        #Формирование рабочего массива (с ССП)
+        ssp['key'] = 1
+        project['key'] = 1
+        project_limits = project.merge(ssp, on = 'key').drop(columns=['key'])
+
+        #Количество участников проектов
+        project_limits = project_limits.rename(columns={'ш.е.': 'ш.е. в проекте'})
+        project_limits['ш.е. в проекте'] = [int(x) for x in random.choices([0, 1, 3, 5, 7, 9, 11],
+                                                    weights=[10, 5, 4, 2, 2, 1, 1],#160
+                                                    k=len(project_limits.index))]
+        
+        #Сверка участников проектов от ССП с общей численностью ССП
+        ssp_project_limits = project_limits.groupby(['ССП'])['ш.е. в проекте'].sum()
+        ssp = pd.merge(ssp, ssp_project_limits, how='inner', on=['ССП']).drop(columns=['key'])
+        
+        #print(ssp) #Проверка, что сверка работает :)
+        
+        ssp['k'] = (ssp['ш.е.']/ssp['ш.е. в проекте']).apply(lambda x: 1 if (x>1) else x)        
+        project_limits = pd.merge(project_limits, ssp[['ССП', 'k']], on='ССП', how='left')   
+        project_limits['ш.е. в проекте'] = (project_limits['ш.е. в проекте']*project_limits['k']).apply(lambda x: int(x))
+        project_limits = project_limits.drop(columns=['k'])    
+        
+        #print(project_limits.iloc[:,4:8])
+        project_limits = project_limits[project_limits['ш.е. в проекте']!=0]
+        
+        return (ssp_draft, project_limits)
+        
+        
+      
+    # def printing(self):
+    #     data = self.detailes()
+    #     # data = self.structure()
+    #     today = date.today()
+    #     with pd.ExcelWriter(f'Test_data_{today.strftime("%d-%m-%Y")}.xlsx') as writer:
+    #                 data.to_excel(writer, 
+    #                               sheet_name='Data', 
+    #                               freeze_panes=(1,1))                                   
+    #                 workbook  = writer.book
+    #                 worksheet = writer.sheets['Data']
+    #                 format1 = workbook.add_format({'num_format': '#,##0'})
+    #                 # format2 = workbook.add_format({'num_format': '0%'})
+    #                 # format3 = workbook.add_format({'num_format': '0.0%'})
+               
+    #                 worksheet.set_column('B:B', len('Руководитель')+1)
+    #                 worksheet.set_column('C:C', len('Категория ресурсов')+1)
+    #                 worksheet.set_column('F:F', len('Подразделение_уровень 2')+1)
+    #                 worksheet.set_column('G:G', len('Подразделение_уровень 3')+1)
+    #                 worksheet.set_column('H:H', len('Подразделение_уровень 3')+1)                   
+    #                 worksheet.set_column('I:I', len('Дельта по замещаемым сотрудникам')+1)
+    #                 worksheet.set_column('L:L', len('Окладный фонд')+1, format1)
+    #                 # worksheet.set_column('J:J', len('%_исполнения')+2, format2)
+    #                 # worksheet.set_column('K:K', len('Периодичность')+1)
+    #                 # worksheet.set_column('L:L', len('Текучесть')+1, format3)
+ 
+#process = Total_Resources()
+#process.printing()
+#process.total_limits()
+#process.project_resources()
+
