@@ -1,0 +1,641 @@
+import pandas as pd
+import random
+import datetime
+from total_resources import Total_Resources
+
+class Detailed_Resources:
+    def __init__(self):
+        self.total = Total_Resources()        
+        #self.date = datetime.date.today()        
+        self.date = datetime.date(2021, 4, 1)#.strftime("%d.%m.%Y")
+    
+    def all_detailed(self):        
+        self.data_1, self.data_2 = self.total.project_resources()
+        info = self.data_1.copy()
+
+        #степень детализации
+        info['Коэффициент детализации'] = [int(x) for x in random.choices(range(95,100),
+                                                                          k = len(info.index))]
+        info['Строк в детализации'] = (info['ш.е.']*(info['Коэффициент детализации']/100)).apply(lambda x: int(x))
+                
+        
+        detailed = pd.DataFrame(columns=['Дата',
+                                         'Источник',
+                                         'Текущая / Проектная деятельность',
+                                         'ВДЛ', 
+                                         'ССП'])
+                                        
+        #формирование массива
+        for row in info.index:
+            n = info.loc[row,'Строк в детализации']
+            df = pd.DataFrame(columns = ['Дата',
+                                         'Источник',
+                                         'Текущая / Проектная деятельность',
+                                         'ВДЛ', 
+                                         'ССП'], 
+                              index = range(n))
+            df['Дата'] = self.date
+            df['Источник'] = info.loc[row,'Источник']
+            df['Текущая / Проектная деятельность'] = info.loc[row,'Текущая / Проектная деятельность']
+            df['ВДЛ'] = info.loc[row,'ВДЛ']
+            df['ССП'] = info.loc[row,'ССП']
+            detailed = pd.concat([detailed, df], ignore_index=True)
+            
+           
+        # Подразделения уровень 2
+        detailed['Подразделение_уровень 2'] = ''        
+        for ssp in detailed['ССП'].unique():
+            ssp_number = detailed['ССП']==ssp       
+            detailed.loc[ssp_number, 'Подразделение_уровень 2'] = ['Подразделение ' 
+                                           + str(ssp[4:]) + '.' 
+                                           + str(x) for x in random.choices(range(1, random.randint(3,7)),
+                                            k=len(detailed[ssp_number].index))]
+        detailed.loc[detailed['ССП']=='', 'Подразделение_уровень 2'] = ''         
+        
+        # Подразделения уровень 3
+        detailed['Подразделение_уровень 3'] = ''        
+        for pdr2 in detailed['Подразделение_уровень 2'].unique():
+            pdr2_number = detailed['Подразделение_уровень 2']==pdr2       
+            detailed.loc[pdr2_number, 'Подразделение_уровень 3'] = ['Подразделение ' 
+                                           + str(pdr2[14:]) + '.' 
+                                           + str(x) for x in random.choices(range(1, random.randint(3,5)),
+                                            k=len(detailed[pdr2_number].index))] 
+        detailed.loc[detailed['ССП']=='', 'Подразделение_уровень 3'] = ''        
+        
+        # Подразделения уровень 4
+        detailed['Подразделение_уровень 4'] = ''        
+        for pdr3 in detailed['Подразделение_уровень 3'].unique():
+            pdr3_number = detailed['Подразделение_уровень 3']==pdr3       
+            detailed.loc[pdr3_number, 'Подразделение_уровень 4'] = ['Подразделение ' 
+                                           + str(pdr3[14:]) + '.' 
+                                           + str(x) for x in random.choices(range(1, random.randint(2,4)),
+                                            k=len(detailed[pdr3_number].index))]
+        detailed.loc[detailed['ССП']=='', 'Подразделение_уровень 4'] = ''        
+                
+        # Категория ресурсов
+        detailed['Категория ресурсов'] = [str(x) for x in random.choices(['Занято',
+                                                              'Забронировано',
+                                                              'Вакантно'],
+                                                            weights = [93,6,3],
+                                                                k=len(detailed.index))]
+           
+         # Подкатегория для "Забронировано" и "Вакантно"
+        detailed['Подкатегория ресурсов'] = ''
+        reserved = detailed['Категория ресурсов']=='Забронировано'
+        vacant = detailed['Категория ресурсов']=='Вакантно'
+        detailed.loc[reserved, 'Подкатегория ресурсов'] = [str(x) for x in random.choices(['Кандидаты на оформлении',          
+                                                              'Переводы из других подразделений',
+                                                              'В подборе',
+                                                              'Приостановленный подбор',
+                                                              'Дельта по замещаемым сотрудникам'],
+                                                            weights = [15,2,50,4,5],
+                                                                k=len(detailed[reserved].index))]
+        detailed.loc[vacant, 'Подкатегория ресурсов'] = [str(x) for x in random.choices(['Незанятые декретные позиции',
+                                                               'Свободные ресурсы'],
+                                                            weights = [7,93],
+                                                                k=len(detailed[vacant].index))]
+       
+               
+        # Категория (руководитель \ специалист)
+        detailed['Категория'] = ''
+        detailed.loc[detailed['ССП']=='', 'Категория'] = [str(x) for x in random.choices(['Руководитель', 
+                                                           'Специалист'], 
+                                                   weights = [95,5],
+                                                   k=len(detailed.loc[detailed['ССП']=='', 'Категория'].index))]
+        detailed.loc[detailed['ССП']!='', 'Категория'] = [str(x) for x in random.choices(['Руководитель', 
+                                                           'Специалист'], 
+                                                   weights = [30,70],
+                                                   k=len(detailed.loc[detailed['ССП']!='', 'Категория'].index))]
+        managers = detailed['Категория']=='Руководитель'
+        specialists = detailed['Категория']=='Специалист'    
+                
+        # ш.е.        
+        detailed['ш.е.'] = 10
+        detailed.loc[detailed['Категория ресурсов']=='Занято','ш.е.'] = [int(x) for x in random.choices([1, 5, 10], 
+                                            weights = [5,5,94],
+                                            k=len(detailed[detailed['Категория ресурсов']=='Занято'].index))]
+        vacant_zam = detailed['Подкатегория ресурсов']=='Дельта по замещаемым сотрудникам'
+        detailed.loc[vacant_zam, 'ш.е.'] = 0
+        detailed['ш.е.'] = detailed['ш.е.']/10        
+               
+        
+        #Окладный фонд
+        detailed['Окладный фонд'] = [int(x) for x in random.choices(range(40000, 200000, 500), 
+                                                              k=len(detailed.index))]
+        detailed.loc[managers,'Окладный фонд'] = [int(x) for x in random.choices(range(250000, 500000, 1000), 
+                                                              k=len(detailed[managers].index))]       
+        detailed['Окладный фонд'] = detailed['Окладный фонд']*detailed['ш.е.']
+        detailed.loc[vacant_zam,'Окладный фонд'] = [int(x) for x in random.choices(range(1000, 30000, 5), 
+                                                              k=len(detailed[vacant_zam].index))]   
+                                                                      
+        #Проверка и приведение в соответствие ш.е. и окладного фонда общим лимитам
+        detailed_agr = detailed.groupby(['ВДЛ','ССП'])[['ш.е.','Окладный фонд']].sum()
+        detailed_agr.columns = ['ш.е._детализация','Окладный фонд_детализация']
+        detailed_agr = pd.merge(detailed_agr, info[['ВДЛ','ССП','ш.е.','Окладный фонд']], on=['ВДЛ','ССП'], how='inner')
+                
+        detailed_agr['k_ОФ'] = (detailed_agr['Окладный фонд']/detailed_agr['Окладный фонд_детализация']).apply(lambda x: 1 if (x>1) else x*0.96)
+        detailed = pd.merge(detailed, detailed_agr[['ВДЛ','ССП','k_ОФ']], on=['ВДЛ','ССП'], how='left')   
+        detailed['Окладный фонд'] = (detailed['Окладный фонд']*detailed['k_ОФ']).apply(lambda x: round(x,-2))
+        detailed = detailed.drop(columns=['k_ОФ'])
+                
+        #print(detailed[(detailed['Окладный фонд']>0) & (detailed['ш.е.']==1)]['Окладный фонд'].min())
+        
+        # Должность
+        detailed['Должность'] = ''
+        detailed.loc[managers,'Должность'] = ['Должность ' + str(x) for x in random.choices(range(1, 30), 
+                                                              k=len(detailed[managers].index))]
+               
+        detailed.loc[specialists,'Должность'] = ['Должность ' + str(x) for x in random.choices(range(31, 100), 
+                                                              k=len(detailed[specialists].index))]
+        
+        # Персональная надбавка
+        detailed['Персональная надбавка'] = 0
+        selected_persons = (detailed['Окладный фонд']>=100000)&(detailed['Категория ресурсов']=='Занято')
+        detailed.loc[selected_persons, 'Персональная надбавка'] = [int(x) for x in random.choices([0, 10000, 15000],
+                                                                weights=[85,10,5],
+                                                              k=len(detailed.loc[selected_persons, 'Персональная надбавка'].index))]
+        
+        # Оклад
+        detailed['Оклад'] = detailed['Окладный фонд'] - detailed['Персональная надбавка']
+        
+        # Город
+        city = {'super_big' : ['Москва'],
+                'big' : ['Санкт-Петербург', 'Нижний Новгород', 'Уфа', 'Чебоксары', 
+                         'Екатеринбург', 'Томск', 'Новосибирск'],
+                'medium' : ['Красноярск', 'Тула', 'Новый Уренгой', 'Краснодар', 'Самара', 'Сургут', 
+                            'Казань', 'Воронеж', 'Владивосток', 'Омск', 'Оренбург', 'Пермь', 'Астрахань', 
+                            'Саратов', 'Ростов-на-Дону', 'Тюмень', 'Волгоград', 'Кемерово', 'Калининград', 
+                            'Ставрополь', 'Ижевск'], 
+                'small' : ['Хабаровск', 'Барнаул', 'Челябинск', 'Иркутск', 'Югорск', 'Якутск', 'Ухта', 'Брянск',
+                 'Надым', 'Белгород', 'Одинцово', 'Южно-Сахалинск', 'Йошкар-Ола', 'Липецк', 
+                 'Ноябрьск', 'Махачкала', 'Набережные Челны', 'Сочи', 'Кострома', 'Мурманск', 
+                 'Рязань', 'Улан-Удэ', 'Благовещенск', 'Киров', 'Стерлитамак', 'Тверь', 'Чайковский', 
+                 'Владимир', 'Курск', 'Новокузнецк', 'Саранск', 'Ярославль', 'Белоярский', 'Вологда', 
+                 'Нефтекамск', 'Нижний Тагил', 'Пятигорск', 'Тольятти']}         
+                         
+        detailed['Категория города'] = ''
+        detailed.loc[managers, 'Категория города'] = [str(x) for x in random.choices(['super_big', 'big', 'medium', 'small'],
+                                                                weights=[70,20,10,5],
+                                                              k=len(detailed.loc[managers, 'Категория города'].index))]
+        detailed.loc[specialists, 'Категория города'] = [str(x) for x in random.choices(['super_big', 'big', 'medium', 'small'],
+                                                                weights=[30,30,20,15],
+                                                              k=len(detailed.loc[specialists, 'Категория города'].index))]
+                                                                      
+        detailed['Город'] = ''
+        for category in detailed['Категория города'].unique():
+            detailed.loc[detailed['Категория города']==category,'Город'] = [str(x) for x in random.choices(city[category],
+                                                              k=len(detailed.loc[detailed['Категория города']==category,'Город'].index))]
+        detailed.loc[detailed['ССП']=='','Город'] = 'Москва'
+                    
+        # РК и СН
+        n_city = ['Екатеринбург','Красноярск','Ижевск','Надым','Новокузнецк','Томск','Уфа','Новый Уренгой','Пермь',
+                  'Нефтекамск', 'Нижний Тагил', 'Тюмень', 'Кемерово', 'Челябинск', 'Иркутск', 'Югорск', 'Ухта',
+                  'Мурманск', 'Улан-Удэ', 'Благовещенск', 'Киров', 'Стерлитамак', 'Чайковский', 'Белоярский','Вологда']
+        rksn_min = [0.016, 0.11, 0.08, 0.295, 0.15, 0.01, 0.002, 0.2, 0.11, 0.06, 0.068, 0.05, 0.11, 0.03, 0.08,
+                    0.27, 0.23, 0.16, 0.20, 0.15, 0.08, 0.068, 0.087, 0.61, 0.08]
+        rksn_max =[0.28, 0.74, 0.15, 1.66, 0.3, 0.49, 0.19, 2.36, 0.15, 0.15, 0.16, 0.17, 0.35, 0.18, 0.66,
+                   1.2, 0.85, 1.2, 0.5, 0.15, 0.19, 0.15, 0.13, 1.5, 0.15]
+                           
+        detailed['% РКСН'] = 0
+        for nc, rmin, rmax in zip(n_city, rksn_min, rksn_max):
+            if rmin==rmax:
+                detailed.loc[detailed['Город']==nc, '% РКСН'] = rmin
+            else:
+                detailed.loc[detailed['Город']==nc, '% РКСН'] = [int(x) for x in random.choices(range(int(rmin*1000), int(rmax*1000)),
+                                                                k=len(detailed.loc[detailed['Город']==nc, '% РКСН'].index))]
+                detailed.loc[detailed['Город']==nc, '% РКСН'] = detailed.loc[detailed['Город']==nc, '% РКСН']/1000
+            
+        detailed['РКСН_сумма'] = round(detailed['Окладный фонд']*detailed['% РКСН'], 0)
+          
+        # ТФР
+        detailed['Типовая функциональная роль'] = ''
+        for vdl in detailed['ВДЛ'].unique():
+            vdl_spec = (detailed['ВДЛ']==vdl) & specialists               
+            
+            spec_with_tfr = random.choices(detailed[vdl_spec].index, k=int(len(detailed[vdl_spec].index)*random.choice(range(60, 90))/100))
+            #vdl_spec
+            detailed.loc[spec_with_tfr, 'Типовая функциональная роль'] = ['ТФР '    
+                                            + str(vdl[4:]) + '.' 
+                                            + str(x) for x in random.choices(range(1, random.randint(3,11)),
+                                                                            k=len(detailed.loc[spec_with_tfr, 'Типовая функциональная роль'].index))]            
+            ssp = detailed[detailed['ВДЛ']==vdl]['ССП'].unique()
+            ssp_without_tfr = random.choices(ssp, k=int(len(ssp)*random.choice(range(40, 70))/100))
+            for s in ssp_without_tfr:
+                detailed.loc[detailed['ССП']==s, 'Типовая функциональная роль'] = ''     
+                        
+        for t in detailed[detailed['Типовая функциональная роль']!='']['Типовая функциональная роль'].unique():
+            if len(detailed[detailed['Типовая функциональная роль']==t].index)<15:
+                detailed.loc[detailed['Типовая функциональная роль']==t, 'Типовая функциональная роль'] = ''
+                
+
+       
+        # Статус работника
+        # постоянный 20140, временный 1623, внешний совместитель 1104, внутренний совместитель 30 (1 подразделение)
+        detailed['Статус работника'] = ''
+        detailed.loc[(detailed['ш.е.']==1)&(detailed['Категория ресурсов']=='Занято'),'Статус работника'] = [str(x) for x in random.choices(['постоянный',
+                                                              'временный'],
+                                                            weights = [92, 8],
+                                                                k=len(detailed.loc[(detailed['ш.е.']==1)&(detailed['Категория ресурсов']=='Занято'),'Статус работника'].index))]
+              
+        detailed.loc[(detailed['ш.е.']!=1)&(detailed['Категория ресурсов']=='Занято'),'Статус работника'] = \
+                                [str(x) for x in random.choices(['внешний совместитель',
+                                                              'внутренний совместитель'],
+                                                            weights = [95, 5],
+                                                                k=len(detailed.loc[(detailed['ш.е.']!=1)&(detailed['Категория ресурсов']=='Занято'),'Статус работника'].index))]
+               
+        # ФИО работника
+        detailed['ФИО работника'] = ''
+        used_norm = (detailed['Категория ресурсов']=='Занято')&(detailed['Статус работника']!='внутренний совместитель')
+        
+        reserved_fio = (detailed['Подкатегория ресурсов'] == 'Незанятые декретные позиции') | \
+                        (detailed['Подкатегория ресурсов'] =='Переводы из других подразделений') | \
+                        (detailed['Подкатегория ресурсов'] == 'Дельта по замещаемым сотрудникам')    
+        detailed.loc[used_norm,'ФИО работника'] = ['ФИО ' + str(x) for x in range(1, len(detailed[used_norm].index)+1)]
+        detailed.loc[reserved_fio,'ФИО работника'] = ['ФИО ' +                
+                                        str(x) for x in range(len(detailed[detailed['Категория ресурсов']=='Занято'].index)+1, 
+                                        (len(detailed[detailed['Категория ресурсов']=='Занято'].index)+len(detailed[reserved_fio].index)+1))]
+        for ssp in detailed['ССП'].unique():
+            used_rep = (detailed['Категория ресурсов']=='Занято')&\
+                        (detailed['Статус работника']=='внутренний совместитель')&\
+                        (detailed['ССП']==ssp)        
+                                   
+            detailed.loc[used_rep,'ФИО работника'] = [str(x) for x in random.choices(detailed.loc[(detailed['ССП']==ssp) &\
+                                                                                        used_norm,
+                                                                                        'ФИО работника'].unique(),
+                                                                            k=len(detailed[used_rep].index))]
+        #! проверить на выгрузке, как отрабатывает для внутренних совместителей
+              
+        # ID физ.лица
+        detailed['ID физ.лица'] = ''
+        for row in detailed.index:
+            if detailed.loc[row,'ФИО работника'] != '':                
+                detailed.loc[row,'ID физ.лица'] = int(str(int((int(detailed.loc[row,'ФИО работника'][4:])+296)**3*9/24))[-10:])
+                #м.б. не хватит 10 знаков - возможно дублирование!
+                              
+        # ID ш.е.
+        detailed['ID ш.е.'] = ''
+        for row in detailed.index:
+            if detailed.loc[row,'ФИО работника'] != '':
+                detailed.loc[row,'ID ш.е.'] = detailed.loc[row,'ID физ.лица']+2957
+        detailed.loc[detailed['Статус работника']=='внутренний совместитель', 'ID ш.е.'] = \
+                     detailed.loc[detailed['Статус работника']=='внутренний совместитель', 'ID ш.е.'].apply(lambda x: x+1)
+                         
+        
+        # ФИО замещаемого работника
+        detailed.loc[detailed['Статус работника']=='временный', 'ФИО замещаемого работника'] = \
+             detailed.loc[detailed['Статус работника']=='временный', 'ФИО работника'].apply(lambda x: x+'_01')
+        
+             
+        # Дата приема
+        detailed.loc[detailed['Категория ресурсов']=='Занято','Дата приема'] = pd.to_datetime(random.choices(pd.bdate_range('2005-01-01', self.date),
+                                                k=len(detailed.loc[detailed['Категория ресурсов']=='Занято'].index)), format='%Y%m%d')
+                #! по внутренним совместителям не совпадает с основной ставкой
+        
+        # Дата последнего изменения оклада
+        detailed.loc[used_norm,'Дата последнего изменения оклада'] = pd.to_datetime(random.choices(pd.bdate_range('2005-06-01', self.date),
+                                                k=len(detailed[used_norm].index)), format='%Y%m%d')
+        detailed.loc[detailed['Дата приема']>=detailed['Дата последнего изменения оклада'], 
+                                                     'Дата последнего изменения оклада'] = None
+              
+        # доп.информация по блоку "Забронировано"        
+        # ID вакансии
+        reserved_non_delta = reserved & (detailed['Подкатегория ресурсов']!='Дельта по замещаемым сотрудникам')
+        id_vacant = reserved_non_delta | (detailed['Подкатегория ресурсов']=='Свободные ресурсы')
+        detailed.loc[id_vacant,'ID вакансии'] = [int(x) for x in random.choices(range(1121, 935794),
+                                                     k=len(detailed[id_vacant].index))]
+        
+        # ID заявки на подбор
+        detailed.loc[reserved_non_delta,'ID заявки на подбор'] = [int(x) for x in random.choices(range(1121, 935794),
+                                                    k=len(detailed[reserved_non_delta].index))]
+                                                            
+        detailed.loc[detailed['Подкатегория ресурсов']=='Переводы из других подразделений', 
+                                                                     'ID заявки на подбор'] = None
+        
+        # Дата начала подбора
+        detailed.loc[reserved_non_delta,'Дата начала подбора'] = detailed.loc[reserved_non_delta,'Дата'] - \
+                                            [pd.Timedelta(days=x) for x in random.choices(range(23, 95),
+                                                    k=len(detailed[reserved_non_delta].index))]
+                
+        detailed.loc[detailed['Подкатегория ресурсов']=='Переводы из других подразделений', 
+                                                                     'Дата начала подбора'] = None
+        
+                
+        # Дата оформления в Банк
+        detailed.loc[detailed['Подкатегория ресурсов']=='Кандидаты на оформлении',
+                     'Дата оформления в Банк'] = detailed.loc[detailed['Подкатегория ресурсов']=='Кандидаты на оформлении',
+                                                              'Дата'] + [pd.Timedelta(days=x) for x in random.choices(range(1, 42),
+                                                                        k=len(detailed[detailed['Подкатегория ресурсов']=='Кандидаты на оформлении'].index))]                                               
+                             
+        # Дата перевода
+        detailed.loc[detailed['Подкатегория ресурсов']=='Переводы из других подразделений',
+                     'Дата перевода'] = detailed.loc[detailed['Подкатегория ресурсов']=='Переводы из других подразделений',
+                                                              'Дата'] + [pd.Timedelta(days=x) for x in random.choices(range(1, 42),
+                                                                        k=len(detailed[detailed['Подкатегория ресурсов']=='Переводы из других подразделений'].index))]
+        # ID переводной таблицы  
+ detailed.loc[detailed['Подкатегория ресурсов']=='Переводы из других подразделений',
+                     'ID переводной таблицы'] = detailed.loc[detailed['Подкатегория ресурсов']=='Переводы из других подразделений',
+                                                              'ID ш.е.'] + detailed.loc[detailed['Подкатегория ресурсов']=='Переводы из других подразделений',
+                                                                                                                      'ID физ.лица']
+                                                                                     #+ [pd.Timedelta(days=x) for x in random.choices(range(1, 42),
+                                                                        #k=len(detailed[detailed['Подкатегория ресурсов']=='Переводы из других подразделений'].index))]                                                                                                              
+                                                                                                                      
+        # Дата приостановки подбора
+        detailed.loc[detailed['Подкатегория ресурсов']=='Приостановленный подбор',
+                     'Дата приостановки подбора'] = detailed.loc[detailed['Подкатегория ресурсов']=='Приостановленный подбор',
+                                                              'Дата начала подбора'] + [pd.Timedelta(days=x) for x in random.choices(range(3, 22),
+                                                                        k=len(detailed[detailed['Подкатегория ресурсов']=='Приостановленный подбор'].index))]
+        # ФИО кандидата
+        st = len(detailed[detailed['ФИО работника'].isna()==False].index)
+        detailed.loc[detailed['Подкатегория ресурсов']=='Кандидаты на оформлении',
+                      'ФИО кандидата']  = ['ФИО ' + 
+                                        str(x) for x in range(st+1, 
+                                        st+(len(detailed[detailed['Подкатегория ресурсов']=='Кандидаты на оформлении'].index))+1)]                                                                                                           
+                      
+        # Планируемая дата окончания отпуска по уходу за ребенком
+        detailed.loc[(detailed['Подкатегория ресурсов']=='Дельта по замещаемым сотрудникам') | \
+                     (detailed['Подкатегория ресурсов']=='Незанятые декретные позиции'),
+                     'Планируемая дата окончания отпуска по уходу за ребенком'] = detailed.loc[(detailed['Подкатегория ресурсов']=='Дельта по замещаемым сотрудникам') | \
+                                                                                                (detailed['Подкатегория ресурсов']=='Незанятые декретные позиции'),'Дата'] + [pd.Timedelta(days=x) for x in random.choices(range(10, 1000),
+                                                                 k=len(detailed[(detailed['Подкатегория ресурсов']=='Дельта по замещаемым сотрудникам') | \
+                                                                                (detailed['Подкатегория ресурсов']=='Незанятые декретные позиции')].index))]                   
+        
+        #print(detailed[reserved_non_delta])
+        
+        #print(detailed[detailed['Подкатегория ресурсов']=='Кандидаты на оформлении'][['ID физ.лица', 'ФИО кандидата']])
+        
+        #print(len(detailed[detailed['Дата последнего изменения оклада'].isna()==True].index))
+        #print(detailed[detailed['ФИО']=='ФИО 17170'][['ФИО','ID физ.лица','ш.е.', 'Статус работника', 'ССП']])
+        #detailed[detailed['ФИО']==''][['ФИО','ID физ.лица','ID ш.е.']]
+        #print(detailed[detailed['Статус работника']=='внутренний совместитель'][['ФИО','ID физ.лица','ш.е.', 'Статус работника']])
+        #print(detailed[detailed['Типовая функциональная роль']!='']['Типовая функциональная роль'].unique())
+        # print(detailed[(detailed['Подкатегория ресурсов']=='Дельта по замещаемым сотрудникам') | \
+        #              (detailed['Подкатегория ресурсов']=='Незанятые декретные позиции')])
+        return (self.data_2, detailed)
+                   
+
+    def projects_detailed(self):
+        # info_projects = self.data_2.copy()
+        info_projects, all_det = self.all_detailed()
+       
+        #формирование массива
+        detailed_pr = pd.DataFrame(columns=['Дата',
+                                         'Источник',
+                                         'Текущая / Проектная деятельность',
+                                         'Программа',
+                                         'Проект',
+                                         'Дата начала проекта',
+                                         'Дата окончания проекта',
+                                         'ССП'])                  
+                                             
+        for row in info_projects.index:            
+            n = info_projects.loc[row,'ш.е. в проекте']
+            k = n//3*7 + n%3
+           
+            df = pd.DataFrame(columns = ['Дата',
+                                         'Источник',
+                                         'Текущая / Проектная деятельность',
+                                         'Программа',
+                                         'Проект',
+                                         'Дата начала проекта',
+                                         'Дата окончания проекта',
+                                         'ССП'], 
+                              index = range(k))
+            df['Дата'] = self.date
+            df['Источник'] = info_projects.loc[row,'Источник']
+            df['Текущая / Проектная деятельность'] = info_projects.loc[row,'Текущая / Проектная деятельность']
+            df['Программа'] = info_projects.loc[row,'Программа']
+            df['Проект'] = info_projects.loc[row,'Проект']
+            df['Дата начала проекта'] = info_projects.loc[row,'Дата начала проекта']
+            df['Дата окончания проекта'] = info_projects.loc[row,'Дата окончания проекта']
+            df['ССП'] = info_projects.loc[row,'ССП']
+            detailed_pr = pd.concat([detailed_pr, df], ignore_index=True)
+              
+       
+        detailed_pr['Вакантно'] = 'нет'
+      
+       # % участия в проектах       
+        for ssp in detailed_pr['ССП'].unique():
+            for project in detailed_pr['Проект'].unique():
+                l = len(detailed_pr[(detailed_pr['ССП']==ssp)&(detailed_pr['Проект']==project)].index)
+                r = [0.3, 0.5, 0.1, 0.3, 1, 0.3, 0.5]
+                z1 = 0
+                k = []
+                while z1 < l//7:
+                    k.extend(r)
+                    z1+=1
+                                  
+                z2 = 0
+                while z2 < l%7:
+                   k.extend([1])
+                   z2+=1
+                detailed_pr.loc[(detailed_pr['ССП']==ssp)&(detailed_pr['Проект']==project), 
+                                 '% участия в проектах'] = k
+        
+       
+        #Привязка к людям / вакансиям        
+                detailed_pr.loc[detailed_pr['% участия в проектах']==1, 'Вакантно'] = [str(x) for x in random.choices(['да', 'нет'],
+                                                                            k=len(detailed_pr[detailed_pr['% участия в проектах']==1].index))]       
+        # ID физ.лица (в проектах)
+        for ssp in detailed_pr['ССП'].unique():
+            for ssp2 in all_det['ССП'].unique():
+                if ssp==ssp2:
+                    detailed_pr.loc[(detailed_pr['ССП']==ssp)&(detailed_pr['Вакантно']=='нет'), 
+                                  'ID физ.лица'] = [int(x) for x in random.choices(all_det.loc[(all_det['ССП']==ssp)&(all_det['Категория ресурсов']=='Занято'), 
+                                                                                                       'ID физ.лица'].unique(),
+                                                                                  k = len(detailed_pr[(detailed_pr['ССП']==ssp)&(detailed_pr['Вакантно']=='нет')].index))]
+     
+        # ID вакансии (на проекты)
+                    detailed_pr.loc[(detailed_pr['ССП']==ssp)&(detailed_pr['Вакантно']=='да'), 
+                                  'ID вакансии'] = [int(x) for x in random.choices(all_det.loc[(all_det['ССП']==ssp)&(all_det['ID вакансии']!='')&(all_det['ID вакансии'].isna()==False), 
+                                                                                                       'ID вакансии'].unique(),
+                                                                                  k = len(detailed_pr[(detailed_pr['ССП']==ssp)&(detailed_pr['Вакантно']=='да')].index))]                   
+                                                                                                                                                            
+        # ФИО работника (в проектах)             
+        detailed_pr = detailed_pr.merge(all_det[['ID физ.лица','ФИО работника']], on=['ID физ.лица'], how='left')      
+       
+        # ФИО кандидата (на проекты)
+        #detailed_pr = detailed_pr.merge(all_det[['ID вакансии','ФИО кандидата']], on=['ID вакансии'], how='left')
+        #ошибка из-за большого количеств нулевых значений
+        
+        # Проектная роль
+        lst = ['Проектная роль ' + str(x) for x in range(1, 20)]
+        detailed_pr['Проектная роль'] = [str(x) for x in random.choices(lst, k=len(detailed_pr.index))]
+                        
+        
+        # Срок действия ш.е. + Срок действия ТД исходя из сроков проектов
+            # исходя из сроков проектов
+        detailed_pr.loc[(detailed_pr['% участия в проектах']==1) &\
+                        (detailed_pr['ID физ.лица'].isna()==False), 'Срок действия ш.е.'] = detailed_pr.loc[(detailed_pr['% участия в проектах']==1) &\
+                                                                                                            (detailed_pr['ID физ.лица'].isna()==False), 'Дата окончания проекта'].apply(lambda x: random.choice([x, None]))
+        detailed_pr.loc[detailed_pr['Срок действия ш.е.'].isna()==False, 'Срок действия ш.е.'] = detailed_pr.loc[detailed_pr['Срок действия ш.е.'].isna()==False, 'Срок действия ш.е.'].apply(lambda x: random.choice([x, None]))
+                  
+        detailed_pr.loc[(detailed_pr['% участия в проектах']==1) &\
+                        (detailed_pr['ID физ.лица'].isna()==False), 'Срок действия ТД'] = detailed_pr.loc[(detailed_pr['% участия в проектах']==1) &\
+                                                                                                          (detailed_pr['ID физ.лица'].isna()==False), 'Дата окончания проекта'].apply(lambda x: random.choice([x, None]))
+        detailed_pr.loc[detailed_pr['% участия в проектах'].isna()==False, 'Срок действия ТД'] = detailed_pr.loc[detailed_pr['% участия в проектах'].isna()==False, 'Срок действия ТД'].apply(lambda x: random.choice([x, None]))
+                         
+        all_det = all_det.drop_duplicates(subset=['ФИО работника','ID ш.е.', 'ID вакансии','ID заявки на подбор'])
+        all_det =  all_det.merge(detailed_pr[['ID физ.лица', 'Срок действия ш.е.', 'Срок действия ТД']], on=['ID физ.лица'], how='left')
+            # Срок действия ТД дополнительно, например, для пенсионеров
+             
+        all_det.loc[(all_det['Категория ресурсов']=='Занято') & \
+                    (all_det['Срок действия ТД'].isna()==True),'Срочный ТД'] = [str(x) for x in random.choices(['да', 'нет'],
+                                                                                                               weights=[5, 95],
+                                                                 k=len(all_det[(all_det['Категория ресурсов']=='Занято') & \
+                                                                               (all_det['Срок действия ТД'].isna()==True)].index))]
+        
+        all_det.loc[all_det['Срочный ТД']=='да','Срок действия ТД'] =  all_det.loc[all_det['Срочный ТД']=='да', 'Дата'] \
+                                                                        + [pd.Timedelta(days=x) for x in random.choices(range(10, 350),
+                                                                                                k=len(all_det[all_det['Срочный ТД']=='да'].index))]                                              
+        
+        # Прямой ресурс в общих лимитах - где нет ССП
+        all_det.loc[all_det['ССП']=='','ССП'] = 'Прямой ресурс'
+        
+        # Фактическая численность
+        all_det.loc[(all_det['Категория ресурсов']=='Занято') & \
+                    (all_det['Статус работника']!='внутренний совместитель'), 'Фактическая численность'] = 1
+               
+        return (self.data_1, self.data_2, all_det, detailed_pr)
+    
+    
+    def print_detailed(self):  
+        self.data_1, self.data_2, all_det, detailed_pr = self.projects_detailed()
+        self.data_1 = self.data_1.drop(columns=['Коэффициент','Средний оклад','Участие в проектах'])
+        # Прямой ресурс в общих лимитах - где нет ССП
+        self.data_1.loc[self.data_1['ССП']=='','ССП'] = 'Прямой ресурс'
+            
+        #Преобразование даты в формат строки для распознавания Qlik
+        lst = ['Дата',
+                  'Дата приема',
+                  'Дата последнего изменения оклада',
+                  'Дата начала подбора',
+                  'Дата оформления в Банк',
+                  'Дата перевода',
+                  'Дата приостановки подбора',
+                  'Планируемая дата окончания отпуска по уходу за ребенком',
+                  'Срок действия ш.е.',
+                  'Срок действия ТД',
+                  'Дата начала проекта',
+                  'Дата окончания проекта']
+        for table in [self.data_1, self.data_2, all_det, detailed_pr]:
+            for column in table.columns:
+                if column in lst:
+                    table.loc[table[column].isna()==False, 
+                              column] = table.loc[table[column].isna()==False, 
+                                                  column].apply(lambda x: x.strftime("%d.%m.%Y"))
+        
+                                                
+        all_det = all_det.drop_duplicates(subset=['ФИО работника','ID ш.е.', 'ID вакансии','ID заявки на подбор'])
+        all_det = all_det.drop(columns=['Категория города', 'Срочный ТД'])
+                
+        #detailed_pr = detailed_pr.drop_duplicates(subset=['ФИО работника','ID физ.лица', 'Проект'])
+        #detailed_pr.loc[detailed_pr['ID физ.лица'].isna()==True] = detailed_pr.loc[detailed_pr['ID физ.лица'].isna()==True].drop_duplicates(subset=['ID вакансии'])
+        detailed_pr = detailed_pr.drop(columns=['Вакантно', 'Срок действия ш.е.', 'Срок действия ТД'])
+        #!нужна обратная проверка на участие в проектах не более 1
+              
+# =============================================================================
+#         Кусок для формирования демонстрационных дашбордов
+# =============================================================================
+        # перекрестное подтягивание данных в таблице с общей детализацией
+        detailed_pr_agrf = detailed_pr.groupby(['ID физ.лица'])[['% участия в проектах']].sum()
+        detailed_pr_agrv = detailed_pr.groupby(['ID вакансии'])[['% участия в проектах']].sum()
+        detailed_pr_agrv = detailed_pr_agrv.rename(columns={'% участия в проектах':'% участия в проектах_2'})
+        all_det = all_det.merge(detailed_pr_agrf, how='left', on=['ID физ.лица'])
+        all_det = all_det.merge(detailed_pr_agrv, how='left', on=['ID вакансии'])
+        all_det.loc[all_det['% участия в проектах_2'].isna()==True,'% участия в проектах_2'] = 0
+        all_det.loc[all_det['% участия в проектах'].isna()==True,'% участия в проектах'] = all_det.loc[all_det['% участия в проектах'].isna()==True,'% участия в проектах_2'] 
+        all_det.loc[all_det['Статус работника']=='внутренний совместитель', '% участия в проектах'] = 0
+        all_det['key'] = all_det.index
+                
+        # признак участие в проектах
+        all_det['Участие в проектах'] = 'частично'
+        all_det.loc[all_det['% участия в проектах']>=all_det['ш.е.'], 'Участие в проектах'] = 'полностью'
+        all_det.loc[all_det['% участия в проектах']==0, 'Участие в проектах'] = 'не задействованы'
+        
+        # постоянные ш.е. / временные ш.е. 
+        all_det['Постоянные / временные ш.е.'] = 'постоянные ш.е.'
+        all_det.loc[all_det['Срок действия ш.е.'].isna()==False, 'Постоянные / временные ш.е.'] = 'временные ш.е.'
+        
+        # перекрестное подтягивание данных в таблице с детализацией по проектам
+        key_1 = all_det[['key', 'ID физ.лица']]
+        key_2 = all_det.groupby(by=['ID вакансии'], dropna=True)[['key']].sum()
+        detailed_pr = detailed_pr.merge(key_1, how='left', on=['ID физ.лица']).rename(columns={'key':'key_1'})
+        detailed_pr = detailed_pr.merge(key_2, how='left', on=['ID вакансии'])
+        detailed_pr.loc[detailed_pr['key'].isna()==True, 'key'] = detailed_pr.loc[detailed_pr['key'].isna()==True, 'key_1']
+                     
+        dt = all_det[['key',
+                      'ВДЛ',
+                      'Подразделение_уровень 2',
+                      'Подразделение_уровень 3',
+                      'Подразделение_уровень 4',
+                      'Категория ресурсов',
+                      'Подкатегория ресурсов',
+                      'Город',
+                      'ID ш.е.',
+                      'Должность',
+                      'Статус работника',
+                      'Срок действия ш.е.',
+                      'Срок действия ТД',
+                      'ID заявки на подбор',
+                      'Дата начала подбора',
+                      'ФИО кандидата',
+                      'Дата оформления в Банк', 
+                      'ID переводной таблицы',
+                      'Дата перевода',
+                      'Дата приостановки подбора',
+                      'Планируемая дата окончания отпуска по уходу за ребенком',
+                      'Постоянные / временные ш.е.']]
+        detailed_pr = detailed_pr.merge(dt, how='left', on=['key'])
+        detailed_pr = detailed_pr[(detailed_pr['ID физ.лица'].isna()==False) | \
+                                  (detailed_pr['ID вакансии'].isna()==False)].drop_duplicates(subset=['ФИО работника','ID физ.лица', 'Проект'])
+        # исключение технических столбцов
+        all_det = all_det.drop(columns=['% участия в проектах_2', 'key'])
+        detailed_pr = detailed_pr.drop(columns=['key', 'key_1'])
+         
+        # включение в общую детализацию недетализированных лимитов
+        dt_2 = all_det.groupby(['ВДЛ','ССП'])[['ш.е.','Окладный фонд']].sum()
+        dt_2 = dt_2.rename(columns={'ш.е.':'ш.е._детали', 'Окладный фонд':'Окладный фонд_детали'})
+        dt_2 = self.data_1.merge(dt_2, how='left', on=['ВДЛ','ССП']).rename(columns={'ш.е.':'ш.е._фикс', 'Окладный фонд':'Окладный фонд_фикс'})
+        dt_2.loc[dt_2['ш.е._детали'].isna()==True, 'ш.е._детали'] = 0
+        dt_2.loc[dt_2['Окладный фонд_детали'].isna()==True, 'Окладный фонд_детали'] = 0
+        dt_2['ш.е.'] = dt_2['ш.е._фикс'] - dt_2['ш.е._детали']
+        #dt_2['Окладный фонд'] = dt_2['Окладный фонд_фикс'] - dt_2['Окладный фонд_детали']
+        dt_2['Окладный фонд'] = dt_2['Окладный фонд_детали'] / dt_2['ш.е._детали'] * (dt_2['ш.е._фикс']-dt_2['ш.е._детали'])
+        dt_2['k_of'] = [int(x) for x in random.choices(range(89, 102), 
+                                                              k=len(dt_2.index))]
+        dt_2['Окладный фонд'] = dt_2['Окладный фонд'] * dt_2['k_of'] / 100
+        
+        dt_2 = dt_2.drop(columns=['ш.е._фикс', 
+                                  'Окладный фонд_фикс', 
+                                  'ш.е._детали', 
+                                  'Окладный фонд_детали',
+                                  'k_of'])
+        dt_2['Категория ресурсов'] = 'Вакантно'
+        dt_2['Подкатегория ресурсов'] = 'Недетализированный лимит'
+        all_det = pd.concat([all_det, dt_2])
+        
+# =============================================================================
+#         конец демонстрационной части
+# =============================================================================
+        with pd.ExcelWriter(f'Demonstration_data_{self.date.strftime("%d-%m-%Y")}.xlsx') as writer:
+            self.data_1.to_excel(writer,                                   
+                          sheet_name='ССП_total', 
+                          freeze_panes=(1,0),
+                          index=False)
+            self.data_2.to_excel(writer, 
+                          sheet_name='Проекты_total', 
+                          freeze_panes=(1,0),
+                          index=False)  
+            all_det.to_excel(writer, 
+                          sheet_name='ССП_детализация', 
+                          freeze_panes=(1,0),
+                          index = False)
+            detailed_pr.to_excel(writer, 
+                          sheet_name='Проекты_детализация', 
+                          freeze_panes=(1,0),
+                          index=False) 
+     
+
+process = Detailed_Resources()
+#process.all_detailed()
+process.print_detailed()                                                                                                                            
